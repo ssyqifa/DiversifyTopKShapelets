@@ -7,9 +7,21 @@ package DiversifyQuery;
 
 import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Scanner;
+import weka.classifiers.Classifier;
+import weka.classifiers.bayes.BayesNet;
+import weka.classifiers.bayes.NaiveBayes;
+import weka.classifiers.functions.SMO;
+import weka.classifiers.lazy.IB1;
+import weka.classifiers.meta.RotationForest;
+import weka.classifiers.trees.J48;
+import weka.classifiers.trees.RandomForest;
+import weka.classifiers.trees.shapelet_trees.ShapeletTreeClassifier;
+import weka.core.Attribute;
+import weka.core.FastVector;
 import weka.core.Instance;
 import weka.core.Instances;
 
@@ -23,6 +35,9 @@ public class DivTopK {
 
     public static ArrayList<Dresult<LegacyShapelet>> DResultSet = new ArrayList<>();
 
+    private static Classifier classifiers[];
+    private static String classifierNames[];
+    
     /**
      * Load a set of Instances from an ARFF
      *
@@ -44,6 +59,84 @@ public class DivTopK {
         return data;
     }
 
+    /*
+     * @param data the input data to be transformed (and to find the shapelets if this is the first run)
+     * @return the transformed representation of data, according to the distances from each instance to each of the k shapelets
+     * @throws Exception if the number of shapelets or the length parameters specified are incorrect
+     */
+    
+    public Instances transformData(Instances data) throws Exception{
+        ArrayList<LegacyShapelet> shapelets=new ArrayList<>();
+        for(int i=5;i<=1;i--){
+            if(DResultSet.get(i).result.size()==i)
+                shapelets.addAll(DResultSet.get(i).result);
+        }
+        if(shapelets.size() < 1){
+            throw new Exception("Number of shapelets initialised incorrectly - please select value of k greater than or equal to 1 (Usage: setNumberOfShapelets");
+        }
+
+
+        if(data.classIndex() < 0) {
+            throw new Exception("Require that the class be set for the ShapeletTransform");
+        }
+
+         
+        Instances output = determineOutputFormat(data,shapelets);
+
+        // for each data, get distance to each shapelet and create new instance
+        for(int i = 0; i < data.numInstances(); i++){ // for each data
+            Instance toAdd = new Instance(shapelets.size() + 1);
+            int shapeletNum = 0;
+            for(LegacyShapelet s: shapelets){
+                double dist = subsequenceDistance(s.content, data.instance(i));
+                toAdd.setValue(shapeletNum++, dist);
+            }
+            toAdd.setValue(shapelets.size(), data.instance(i).classValue());
+            output.add(toAdd);
+        }
+        return output;
+    }
+    
+    /**
+     * Sets the format of the filtered instances that are output. I.e. will include k attributes each shapelet 
+     * distance and a class value
+     *
+     * @param inputFormat the format of the input data
+     * @return a new Instances object in the desired output format
+     * @throws Exception if all required parameters of the filter are not initialised correctly
+     */
+
+    protected Instances determineOutputFormat(Instances inputFormat,ArrayList<LegacyShapelet> shapelets) throws Exception{
+
+
+
+        //Set up instances size and format.
+        //int length = this.numShapelets;
+        int length = shapelets.size();
+        FastVector atts = new FastVector();
+        String name;
+        for(int i = 0; i < length; i++){
+            name = "Shapelet_" + i;
+            atts.addElement(new Attribute(name));
+        }
+
+        if(inputFormat.classIndex() >= 0){ //Classification set, set class
+            //Get the class values as a fast vector
+            Attribute target = inputFormat.attribute(inputFormat.classIndex());
+
+            FastVector vals = new FastVector(target.numValues());
+            for(int i = 0; i < target.numValues(); i++){
+                vals.addElement(target.value(i));
+            }
+            atts.addElement(new Attribute(inputFormat.attribute(inputFormat.classIndex()).name(), vals));
+        }
+        Instances result = new Instances("Shapelets" + inputFormat.relationName(), atts, inputFormat.numInstances());
+        if(inputFormat.classIndex() >= 0){
+            result.setClassIndex(result.numAttributes() - 1);
+        }
+        return result;
+    }
+    
     public static ArrayList<LegacyShapelet> readShapelets(String fileName, Instances data) {
         ArrayList<LegacyShapelet> shapeletsList = new ArrayList<>();
         LegacyShapelet shapelet = new LegacyShapelet();
@@ -304,13 +397,66 @@ public class DivTopK {
         return false;
     }
 
+     public static void table4_5() throws Exception{
+        
+        // Initialise classifiers required for this experiment
+        classifiers = new Classifier[8];
+        classifiers[0] = new ShapeletTreeClassifier("infoTree.txt");
+        classifiers[1] = new J48();
+        classifiers[2] = new IB1();
+        classifiers[3] = new NaiveBayes();
+        classifiers[4] = new BayesNet();
+        classifiers[5] = new RandomForest();
+        classifiers[6] = new RotationForest();
+        classifiers[7] = new SMO();
+
+        // Set up names for the classifiers - only used for output
+        classifierNames = new String[8];
+        classifierNames[0] = "ShapeletTree";
+        classifierNames[1] = "C4.5";
+        classifierNames[2] = "1NN";
+        classifierNames[3] = "Naive Bayes";
+        classifierNames[4] = "Bayesian Network";
+        classifierNames[5] = "Random Forest";
+        classifierNames[6] = "Rotation Forest";
+        classifierNames[7] = "SVM (linear)";
+
+        if((classifierToProcessIndex < 1 || classifierToProcessIndex > classifiers.length) && classifierToProcessIndex != -1 ){
+            throw new IOException("Invalid classifier identifier.");
+        }else{
+           if(classifierToProcessIndex != -1){
+                classifierToProcessIndex--; 
+           }
+        }
+           
+        // Compute classifier accuracies for each classifier
+        double accuracies[][] = new double[classifiers.length][];
+        boolean transFlag = false;
+        for(int i = 0; i < classifiers.length; i++){
+            if(!(classifiers[i] instanceof ShapeletTreeClassifier)){
+                //shapeletFilter = new Shapelet();
+                //shapeletFilter.setQualityMeasure(Shapelet.ShapeletQualityChoice.INFORMATION_GAIN);
+                //shapeletFilter.supressOutput();
+                transFlag = true;
+            }
+            if(i == classifierToProcessIndex || classifierToProcessIndex == -1){
+                accuracies[i] = classifierAccuracy(i, transFlag, false, true);
+            }
+        }
+        
+        // Write experiment output to file 
+        writeFileContent(accuracies);
+    }
+    
     public static void main(String[] args) {
         try {
 
-            int k = 15;
+            int k = 10;
             DivTopK divTopK = new DivTopK();
-            Instances data = DivTopK.loadData(args[0]);
-            ArrayList<LegacyShapelet> shapeletsList = divTopK.readShapelets(args[1], data);
+            Instances dataTrain = DivTopK.loadData(args[0]); //训练数据
+            Instances dataTest=divTopK.loadData(args[2]);   //测试数据
+            ArrayList<LegacyShapelet> shapeletsList = divTopK.readShapelets(args[1], dataTrain);//候选shapelets
+            
 //            System.out.println("----------------");
 //            for (int i = 0; i < shapeletsList.size(); i++) {
 //
@@ -320,9 +466,11 @@ public class DivTopK {
 //
 //            }
 
-            ArrayList<GraphNode<LegacyShapelet>> graph = divTopK.constructShapeletGraph(shapeletsList, data);
+            ArrayList<GraphNode<LegacyShapelet>> graph = divTopK.constructShapeletGraph(shapeletsList, dataTrain);
             DResultSet = divTopK.divAstar(graph, k);
-            double dist=0;
+            
+            Instances dataTrainTransformed=divTopK.transformData(dataTrain);
+            Instances dataTestTransformed=divTopK.transformData(dataTest);
             
 
         } catch (Exception e) {
