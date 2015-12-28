@@ -19,6 +19,10 @@ import weka.classifiers.lazy.IB1;
 import weka.classifiers.meta.RotationForest;
 import weka.classifiers.trees.J48;
 import weka.classifiers.trees.RandomForest;
+import weka.classifiers.trees.shapelet_trees.FStatShapeletTreeWithInfoGain;
+import weka.classifiers.trees.shapelet_trees.KruskalWallisTree;
+import weka.classifiers.trees.shapelet_trees.MoodsMedianTree;
+import weka.classifiers.trees.shapelet_trees.MoodsMedianTreeWithInfoGain;
 import weka.classifiers.trees.shapelet_trees.ShapeletTreeClassifier;
 import weka.core.Attribute;
 import weka.core.FastVector;
@@ -35,9 +39,14 @@ public class DivTopK {
 
     public static ArrayList<Dresult<LegacyShapelet>> DResultSet = new ArrayList<>();
 
+    private static Instances dataTrainTransformed;
+    private static Instances dataTestTransformed;
+
     private static Classifier classifiers[];
     private static String classifierNames[];
-    
+
+    private static int classifierToProcessIndex;
+
     /**
      * Load a set of Instances from an ARFF
      *
@@ -64,30 +73,28 @@ public class DivTopK {
      * @return the transformed representation of data, according to the distances from each instance to each of the k shapelets
      * @throws Exception if the number of shapelets or the length parameters specified are incorrect
      */
-    
-    public Instances transformData(Instances data) throws Exception{
-        ArrayList<LegacyShapelet> shapelets=new ArrayList<>();
-        for(int i=5;i<=1;i--){
-            if(DResultSet.get(i).result.size()==i)
+    public Instances transformData(Instances data) throws Exception {
+        ArrayList<LegacyShapelet> shapelets = new ArrayList<>();
+        for (int i = 5; i <= 1; i--) {
+            if (DResultSet.get(i).result.size() == i) {
                 shapelets.addAll(DResultSet.get(i).result);
+            }
         }
-        if(shapelets.size() < 1){
+        if (shapelets.size() < 1) {
             throw new Exception("Number of shapelets initialised incorrectly - please select value of k greater than or equal to 1 (Usage: setNumberOfShapelets");
         }
 
-
-        if(data.classIndex() < 0) {
+        if (data.classIndex() < 0) {
             throw new Exception("Require that the class be set for the ShapeletTransform");
         }
 
-         
-        Instances output = determineOutputFormat(data,shapelets);
+        Instances output = determineOutputFormat(data, shapelets);
 
         // for each data, get distance to each shapelet and create new instance
-        for(int i = 0; i < data.numInstances(); i++){ // for each data
+        for (int i = 0; i < data.numInstances(); i++) { // for each data
             Instance toAdd = new Instance(shapelets.size() + 1);
             int shapeletNum = 0;
-            for(LegacyShapelet s: shapelets){
+            for (LegacyShapelet s : shapelets) {
                 double dist = subsequenceDistance(s.content, data.instance(i));
                 toAdd.setValue(shapeletNum++, dist);
             }
@@ -96,47 +103,45 @@ public class DivTopK {
         }
         return output;
     }
-    
+
     /**
-     * Sets the format of the filtered instances that are output. I.e. will include k attributes each shapelet 
-     * distance and a class value
+     * Sets the format of the filtered instances that are output. I.e. will
+     * include k attributes each shapelet distance and a class value
      *
      * @param inputFormat the format of the input data
      * @return a new Instances object in the desired output format
-     * @throws Exception if all required parameters of the filter are not initialised correctly
+     * @throws Exception if all required parameters of the filter are not
+     * initialised correctly
      */
-
-    protected Instances determineOutputFormat(Instances inputFormat,ArrayList<LegacyShapelet> shapelets) throws Exception{
-
-
+    protected Instances determineOutputFormat(Instances inputFormat, ArrayList<LegacyShapelet> shapelets) throws Exception {
 
         //Set up instances size and format.
         //int length = this.numShapelets;
         int length = shapelets.size();
         FastVector atts = new FastVector();
         String name;
-        for(int i = 0; i < length; i++){
+        for (int i = 0; i < length; i++) {
             name = "Shapelet_" + i;
             atts.addElement(new Attribute(name));
         }
 
-        if(inputFormat.classIndex() >= 0){ //Classification set, set class
+        if (inputFormat.classIndex() >= 0) { //Classification set, set class
             //Get the class values as a fast vector
             Attribute target = inputFormat.attribute(inputFormat.classIndex());
 
             FastVector vals = new FastVector(target.numValues());
-            for(int i = 0; i < target.numValues(); i++){
+            for (int i = 0; i < target.numValues(); i++) {
                 vals.addElement(target.value(i));
             }
             atts.addElement(new Attribute(inputFormat.attribute(inputFormat.classIndex()).name(), vals));
         }
         Instances result = new Instances("Shapelets" + inputFormat.relationName(), atts, inputFormat.numInstances());
-        if(inputFormat.classIndex() >= 0){
+        if (inputFormat.classIndex() >= 0) {
             result.setClassIndex(result.numAttributes() - 1);
         }
         return result;
     }
-    
+
     public static ArrayList<LegacyShapelet> readShapelets(String fileName, Instances data) {
         ArrayList<LegacyShapelet> shapeletsList = new ArrayList<>();
         LegacyShapelet shapelet = new LegacyShapelet();
@@ -311,7 +316,7 @@ public class DivTopK {
         MaxHeap<Entry> H = new MaxHeap<>();
         H.insert(new Entry());
 
-        for (int i = 0; i < k+1; i++) {
+        for (int i = 0; i < k + 1; i++) {
             Dresult<LegacyShapelet> d = new Dresult<>();
             d.score = -1;
             DResultSet.add(d);
@@ -322,7 +327,6 @@ public class DivTopK {
             for (int m = 1; m <= H.getCurrentSize(); m++) {
                 Entry entry = new Entry();
                 entry = arrayEntrys.get(m);
-
 
                 double bound = AstarBound(G, entry, k);
                 entry.setBound(bound);
@@ -397,8 +401,8 @@ public class DivTopK {
         return false;
     }
 
-     public static void table4_5() throws Exception{
-        
+    public static void table4_5() throws Exception {
+
         // Initialise classifiers required for this experiment
         classifiers = new Classifier[8];
         classifiers[0] = new ShapeletTreeClassifier("infoTree.txt");
@@ -421,42 +425,88 @@ public class DivTopK {
         classifierNames[6] = "Rotation Forest";
         classifierNames[7] = "SVM (linear)";
 
-        if((classifierToProcessIndex < 1 || classifierToProcessIndex > classifiers.length) && classifierToProcessIndex != -1 ){
+        if ((classifierToProcessIndex < 1 || classifierToProcessIndex > classifiers.length) && classifierToProcessIndex != -1) {
             throw new IOException("Invalid classifier identifier.");
-        }else{
-           if(classifierToProcessIndex != -1){
-                classifierToProcessIndex--; 
-           }
+        } else {
+            if (classifierToProcessIndex != -1) {
+                classifierToProcessIndex--;
+            }
         }
-           
+
         // Compute classifier accuracies for each classifier
-        double accuracies[][] = new double[classifiers.length][];
-        boolean transFlag = false;
-        for(int i = 0; i < classifiers.length; i++){
-            if(!(classifiers[i] instanceof ShapeletTreeClassifier)){
-                //shapeletFilter = new Shapelet();
-                //shapeletFilter.setQualityMeasure(Shapelet.ShapeletQualityChoice.INFORMATION_GAIN);
-                //shapeletFilter.supressOutput();
-                transFlag = true;
-            }
-            if(i == classifierToProcessIndex || classifierToProcessIndex == -1){
-                accuracies[i] = classifierAccuracy(i, transFlag, false, true);
+        double accuracies[] = new double[classifiers.length];
+
+        for (int i = 1; i < classifiers.length; i++) {
+            
+            if (i == classifierToProcessIndex || classifierToProcessIndex == -1) {
+                accuracies[i] = classifierAccuracy(i,true, true);
             }
         }
-        
+
         // Write experiment output to file 
         writeFileContent(accuracies);
     }
-    
+
+    /**
+     * A method to validate a given classifier
+     *
+     * @param classifierIndex index of the classifier to be validated
+     * @param useTransformedData flag indicating what type of data to use.
+     * Shapelet is used for data transformation.
+     * @param computeErrorRate flag indicating whether error rate is required
+     * rather than classifier accuracy.
+     * @param usePercentage flag indicating whether an accuracy/error rate
+     * should be converted to percentage.
+     * @return classifier accuracy/error rate
+     */
+    private static double classifierAccuracy(int classifierIndex,  boolean computeErrorRate, boolean usePercentage) {
+        try {
+            classifiers[classifierIndex].buildClassifier(dataTrainTransformed);
+        } catch (Exception e) {
+            System.out.println("build classifier error!");
+            e.printStackTrace();
+        }
+        
+        
+        double accuracy=0.0;
+
+        for(int j=0;j<dataTestTransformed.numInstances();j++){
+            double classifierPrediction=0.0;
+            try {
+                classifierPrediction=classifiers[classifierIndex].classifyInstance(dataTestTransformed.instance(j));
+                
+            } catch (Exception e) {
+                System.out.println("classification error!");
+                e.printStackTrace();
+            }
+            
+            double actualClass=dataTestTransformed.instance(j).classValue();
+            if (classifierPrediction==actualClass) {
+                accuracy++;
+            }
+        }
+        accuracy /=dataTestTransformed.numInstances();
+
+        if (computeErrorRate) {
+            accuracy = 1 - accuracy;
+        }
+
+        if (usePercentage) {
+            accuracy *= 100;
+        }
+
+        return accuracy;
+    }
+
     public static void main(String[] args) {
         try {
 
             int k = 10;
             DivTopK divTopK = new DivTopK();
             Instances dataTrain = DivTopK.loadData(args[0]); //训练数据
-            Instances dataTest=divTopK.loadData(args[2]);   //测试数据
+            Instances dataTest = divTopK.loadData(args[2]);   //测试数据
             ArrayList<LegacyShapelet> shapeletsList = divTopK.readShapelets(args[1], dataTrain);//候选shapelets
-            
+
 //            System.out.println("----------------");
 //            for (int i = 0; i < shapeletsList.size(); i++) {
 //
@@ -465,13 +515,11 @@ public class DivTopK {
 //                System.out.println(shapeletsList.get(i).separationGap + "  " + shapeletsList.get(i).splitThreshold);
 //
 //            }
-
             ArrayList<GraphNode<LegacyShapelet>> graph = divTopK.constructShapeletGraph(shapeletsList, dataTrain);
             DResultSet = divTopK.divAstar(graph, k);
-            
-            Instances dataTrainTransformed=divTopK.transformData(dataTrain);
-            Instances dataTestTransformed=divTopK.transformData(dataTest);
-            
+
+            Instances dataTrainTransformed = divTopK.transformData(dataTrain);
+            Instances dataTestTransformed = divTopK.transformData(dataTest);
 
         } catch (Exception e) {
             e.printStackTrace();
