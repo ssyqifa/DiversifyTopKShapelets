@@ -5,8 +5,11 @@
  */
 package DiversifyQuery;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,7 +49,7 @@ public class DivTopK {
     private static String classifierNames[];
 
     private static int classifierToProcessIndex;
-
+private static String outFileName;
     /**
      * Load a set of Instances from an ARFF
      *
@@ -425,28 +428,133 @@ public class DivTopK {
         classifierNames[6] = "Rotation Forest";
         classifierNames[7] = "SVM (linear)";
 
-        if ((classifierToProcessIndex < 1 || classifierToProcessIndex > classifiers.length) && classifierToProcessIndex != -1) {
-            throw new IOException("Invalid classifier identifier.");
-        } else {
-            if (classifierToProcessIndex != -1) {
-                classifierToProcessIndex--;
-            }
-        }
+//        if ((classifierToProcessIndex < 1 || classifierToProcessIndex > classifiers.length) && classifierToProcessIndex != -1) {
+//            throw new IOException("Invalid classifier identifier.");
+//        } else {
+//            if (classifierToProcessIndex != -1) {
+//                classifierToProcessIndex--;
+//            }
+//        }
 
         // Compute classifier accuracies for each classifier
         double accuracies[] = new double[classifiers.length];
 
         for (int i = 1; i < classifiers.length; i++) {
             
-            if (i == classifierToProcessIndex || classifierToProcessIndex == -1) {
+            //if (i == classifierToProcessIndex || classifierToProcessIndex == -1) {
                 accuracies[i] = classifierAccuracy(i,true, true);
-            }
+            
         }
 
         // Write experiment output to file 
         writeFileContent(accuracies);
     }
 
+    /**
+     * A method to write content to a given file.
+     * 
+     * @param fileName file name including extension
+     * @param content  content of the file
+     */
+   private static void writeFileContent(double content[][]){
+        // Check if file name is provided.
+        if(outFileName == null || outFileName.isEmpty()){
+            outFileName = "Table_" + tableToProduceIndex + 
+                          "_File_" + (fileToProcessIndex+1) + 
+                          "_Classifier_" + (classifierToProcessIndex+1) + ".csv";            
+        }
+            
+       // If a file with given name does not exists then create one and print
+       // the header to it, which inlcudes all the classifier names used in the
+       // experiment. 
+       StringBuilder sb = new StringBuilder();
+        if(!isFileExists(outFileName)){
+            sb.append("Data Set, "); 
+            for(int i = 0; i < classifierNames.length; i++){
+                if(i == classifierToProcessIndex || classifierToProcessIndex == -1){
+                    sb.append(classifierNames[i]);
+                }
+                
+                if(-1 == classifierToProcessIndex && i != classifierNames.length - 1){
+                    sb.append(", ");
+                }
+            }
+            writeToFile(outFileName, sb.toString(), false);
+        }
+        
+        // Print the experiment results to the file.
+        sb = new StringBuilder();
+        for(int i = 0; i < fileNames.length; i++){
+            if(fileToProcessIndex == i || fileToProcessIndex == -1){
+                for(int k = 0; k < classifiers.length; k++){
+                    if(k == 0){
+                        sb.append(fileNames[i]);
+                        sb.append(", ");
+                    }
+                    
+                    if(k == classifierToProcessIndex || classifierToProcessIndex == -1 ){
+                        sb.append(content[k][i]);
+                    }
+                    
+                    if(-1 == classifierToProcessIndex && k != classifiers.length - 1){
+                        sb.append(", ");
+                    }
+                }
+            }
+        }
+        writeToFile(outFileName, sb.toString(), true);
+   }
+   
+   /**
+    * A method to write text into a file.
+    * @param filename file name including the extension.
+    * @param text content to be written into the file.
+    * @param append flag indicating whether a file should be appended (true) or
+    *        replaced (false).
+    */
+    private static void writeToFile(String filename, String text, boolean append) {
+        
+        BufferedWriter bufferedWriter = null;
+        
+        try {       
+            //Construct the BufferedWriter object
+            bufferedWriter = new BufferedWriter(new FileWriter(filename, append));
+            
+            //Start writing to the output stream
+            bufferedWriter.write(text);
+            bufferedWriter.newLine();
+            
+        } catch (FileNotFoundException ex) {
+            ex.printStackTrace();
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        } finally {
+            //Close the BufferedWriter
+            try {
+                if (bufferedWriter != null) {
+                    bufferedWriter.flush();
+                    bufferedWriter.close();
+                }
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+    
+    /**
+     * A method to check if file with a given name exists.
+     * 
+     * @param filename file name including the extension.
+     * @return true if file with given file name exists, otherwise false.
+     */
+    private static boolean isFileExists(String filename){
+        File f = new File(filename);
+        if(f.isFile() && f.canWrite()) {
+            return true;
+        }else{
+            return false;
+        }   
+    }
     /**
      * A method to validate a given classifier
      *
